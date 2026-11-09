@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,maximum-scale=1">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.png">
+<title>Helfy Tracker</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<style>
+:root{--bg:#000;--fg:#fff;--card:rgba(10,10,10,.88);--line:rgba(255,255,255,.2);--dim:rgba(255,255,255,.6)}
+body.light{--bg:#fff;--fg:#000;--card:rgba(255,255,255,.9);--line:rgba(0,0,0,.2);--dim:rgba(0,0,0,.55)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,sans-serif;transition:background .4s,color .4s}
+#map{position:absolute;inset:0;background:var(--bg)}
+.maplibregl-popup-content{background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:14px;padding:12px 14px;font-size:14px;box-shadow:none}
+.maplibregl-popup-tip{display:none}
+button{font:inherit;font-size:14px;font-weight:600;height:44px;border-radius:22px;border:0;padding:0 16px;background:var(--fg);color:var(--bg);transition:transform .15s,opacity .2s,background .3s}
+button:active{transform:scale(.93)}
+button.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
+button.on{background:var(--fg);color:var(--bg);border-color:var(--fg)}
+#top{position:absolute;z-index:999;top:0;left:0;right:0;padding:calc(env(safe-area-inset-top) + 10px) 12px 0;display:flex;gap:8px;animation:down .7s cubic-bezier(.2,.9,.3,1) both}
+#q{flex:1;min-width:0;height:46px;padding:0 18px;border-radius:23px;border:1px solid var(--line);background:var(--card);backdrop-filter:blur(14px);color:var(--fg);font-size:16px;outline:0}
+#q::placeholder{color:var(--dim)}
+#theme{flex:none;height:46px;background:var(--card);color:var(--fg);border:1px solid var(--line);backdrop-filter:blur(14px)}
+.list{position:absolute;z-index:1000;left:12px;right:12px;top:calc(env(safe-area-inset-top) + 66px);background:var(--bg);border:1px solid var(--line);border-radius:18px;max-height:50%;overflow:auto;display:none}
+.list.show{display:block;animation:down .3s both}
+.list div{padding:14px 16px;border-bottom:1px solid var(--line);font-size:14px}
+.list div:last-child{border:0}
+#guide{position:absolute;z-index:998;top:calc(env(safe-area-inset-top) + 66px);left:12px;right:12px;padding:16px;border-radius:24px;background:var(--card);backdrop-filter:blur(16px);border:1px solid var(--line);text-align:center;display:none}
+#guide.show{display:block;animation:down .5s cubic-bezier(.2,.9,.3,1) both}
+#cmd{font-size:54px;font-weight:800;letter-spacing:2px;line-height:1.1}
+#cmd.pop{animation:pop .35s cubic-bezier(.2,1.4,.4,1)}
+#cmd.miss{color:#ff4d4d}
+#info{color:var(--dim);margin:6px 0 14px}
+#sheet{position:absolute;z-index:999;left:0;right:0;bottom:0;padding:18px 16px calc(env(safe-area-inset-bottom) + 10px);background:var(--card);backdrop-filter:blur(16px);border-radius:26px 26px 0 0;border-top:1px solid var(--line);animation:up .8s cubic-bezier(.2,.9,.3,1) both}
+#place{font-size:19px;font-weight:700;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#coords{font-size:12px;color:var(--dim);margin:6px 0 14px}
+.row{display:flex;gap:8px}.row button{flex:1;padding:0}
+#credit{font-size:10px;color:var(--dim);text-align:center;margin-top:10px}
+.mk{width:20px;height:20px}
+.me{width:18px;height:18px;margin:1px;border-radius:50%;background:var(--fg);border:3px solid var(--bg);position:relative}
+.me::after,.dest::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--fg);animation:pulse 2s ease-out infinite}
+.dest{width:20px;height:20px;border-radius:50%;background:var(--bg);border:4px solid var(--fg);position:relative;animation:drop .6s cubic-bezier(.2,1.5,.4,1)}
+@keyframes up{from{transform:translateY(110%)}}
+@keyframes down{from{transform:translateY(-30px);opacity:0}}
+@keyframes pop{from{transform:scale(.6);opacity:.2}}
+@keyframes drop{from{transform:translateY(-30px) scale(.4);opacity:0}}
+@keyframes pulse{from{transform:scale(1);opacity:.8}to{transform:scale(3);opacity:0}}
+</style></head><body>
+<div id="map"></div>
+<div id="top"><input id="q" placeholder="Search place" enterkeyhint="search"><button id="theme">Theme</button></div>
+<div id="results" class="list"></div><div id="saved" class="list"></div>
+<div id="guide"><div id="cmd">...</div><div id="info"></div><button id="stop" class="ghost" style="width:100%">Stop</button></div>
+<div id="sheet">
+ <div id="place">Finding you...</div><div id="coords"></div>
+ <div class="row"><button id="follow" class="ghost on">Follow</button><button id="save" class="ghost">Save</button><button id="list" class="ghost">Places</button><button id="dl" class="ghost">Offline</button></div>
+ <div id="credit">Map © CARTO, OpenStreetMap contributors</div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script>
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js');
+const $=id=>document.getElementById(id);
+const STYLES={dark:'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json',light:'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json'};
+function applyTheme(l){document.body.classList.toggle('light',l);document.querySelector('meta[name=theme-color]').content=l?'#ffffff':'#000000';}
+let isLight=false;try{isLight=localStorage.getItem('helfy_theme')==='light';}catch(_){}
+applyTheme(isLight);
+// ---- map ----
+const map=new maplibregl.Map({container:'map',style:STYLES[isLight?'light':'dark'],center:[0,20],zoom:1.5,attributionControl:false,maxPitch:60});
+$('theme').onclick=()=>{isLight=!isLight;applyTheme(isLight);try{localStorage.setItem('helfy_theme',isLight?'light':'dark');}catch(_){}map.setStyle(STYLES[isLight?'light':'dark']);};
+let me=null,meMarker=null,follow=true,dest=null,destMarker=null,route=[],heading=null,last=null,minD=Infinity,lastSpoken='',lastSpokeAt=0,speedAvg=1.4,lastNameAt=0,guiding=false,arrived=false,animating=false,shown=null,target=null,pitchSm=0,bearSm=0;
+const R=6371000,rad=d=>d*Math.PI/180,deg=r=>r*180/Math.PI;
+function dist(a,b){const dLa=rad(b.lat-a.lat),dLo=rad(b.lng-a.lng);const x=Math.sin(dLa/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLo/2)**2;return 2*R*Math.asin(Math.sqrt(x));}
+function bearing(a,b){const y=Math.sin(rad(b.lng-a.lng))*Math.cos(rad(b.lat)),x=Math.cos(rad(a.lat))*Math.sin(rad(b.lat))-Math.sin(rad(a.lat))*Math.cos(rad(b.lat))*Math.cos(rad(b.lng-a.lng));return (deg(Math.atan2(y,x))+360)%360;}
+const fmtD=m=>m<1000?Math.round(m)+' m':(m/1000).toFixed(1)+' km';
+const fmtT=s=>s<60?'under 1 min':Math.round(s/60)+' min';
+const saved=()=>{try{return JSON.parse(localStorage.getItem('helfy_places')||'[]');}catch(_){return[];}};
+function mk(cls){const o=document.createElement('div');o.className='mk';const i=document.createElement('div');i.className=cls;o.appendChild(i);return o;}
+function fly(o){animating=true;map.flyTo(o);map.once('moveend',()=>{animating=false;});}
+// route line
+function routeGeo(){return{type:'FeatureCollection',features:route.length>1?[{type:'Feature',properties:{},geometry:{type:'LineString',coordinates:route.map(p=>[p.lng,p.lat])}}]:[]};}
+function ensureRoute(){
+  if(!map.getSource('route'))map.addSource('route',{type:'geojson',data:routeGeo()});
+  if(!map.getLayer('route-line'))map.addLayer({id:'route-line',type:'line',source:'route',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':isLight?'#000':'#fff','line-width':6,'line-opacity':.9}});
+}
+function drawRoute(){const s=map.getSource('route');if(s)s.setData(routeGeo());}
+map.on('style.load',ensureRoute);
+// place names
+const nameCache={};
+async function placeName(p){
+  if(navigator.onLine){
+    try{const r=await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=17&lat=${p.lat}&lon=${p.lng}`);const j=await r.json();const out=j.display_name||j.name||'';if(out){nameCache[p.lat.toFixed(3)+p.lng.toFixed(3)]=out;return out;}}catch(e){}
+  }
+  const near=saved().map(s=>({...s,d:dist(p,s)})).sort((a,b)=>a.d-b.d)[0];
+  if(near&&near.d<300)return 'Near '+near.name;
+  return nameCache[p.lat.toFixed(3)+p.lng.toFixed(3)]||'Offline: '+p.lat.toFixed(4)+', '+p.lng.toFixed(4);
+}
+// ---- GPS (filtered, snapped to route while guiding) ----
+navigator.geolocation.watchPosition(pos=>{
+  const c=pos.coords;let p={lat:c.latitude,lng:c.longitude};
+  if(me&&c.accuracy>80)return;                                   // ignore bad fixes
+  if(me&&dist(me,p)<Math.max(2,c.accuracy*0.25)&&(c.speed||0)<0.7)return; // ignore jitter
+  if(guiding&&route.length>1){let bd=Infinity,bp=null;for(const q of route){const d=dist(p,q);if(d<bd){bd=d;bp=q;}}if(bd<25)p={lat:bp.lat,lng:bp.lng};} // stay on the road
+  if(last){const d=dist(last,p);if(d>4)heading=bearing(last,p);const dt=(pos.timestamp-last.t)/1000;if(dt>0&&d/dt>0.5)speedAvg=speedAvg*.8+(d/dt)*.2;}
+  if(c.heading!=null&&!isNaN(c.heading)&&c.speed>1.2)heading=c.heading;
+  last={...p,t:pos.timestamp};me=p;target={lat:p.lat,lng:p.lng};
+  if(!meMarker){shown={lat:p.lat,lng:p.lng};meMarker=new maplibregl.Marker({element:mk('me')}).setLngLat([p.lng,p.lat]).addTo(map);fly({center:[p.lng,p.lat],zoom:17,duration:2500});}
+  $('coords').textContent=`${navigator.onLine?'':'Offline · '}${p.lat.toFixed(5)}, ${p.lng.toFixed(5)} · ${Math.round((c.speed||0)*3.6)} km/h`;
+  if(Date.now()-lastNameAt>8000){lastNameAt=Date.now();placeName(p).then(n=>$('place').textContent=n);}
+  if(guiding)guide();
+},err=>{$('place').textContent='Please allow location';$('coords').textContent=err.message;},{enableHighAccuracy:true,maximumAge:0,timeout:20000});
+// smooth movement: dot glides between GPS points, camera follows
+function frame(){
+  if(shown&&target&&meMarker){
+    shown.lat+=(target.lat-shown.lat)*.12;shown.lng+=(target.lng-shown.lng)*.12;
+    meMarker.setLngLat([shown.lng,shown.lat]);
+    if(follow&&!animating){
+      pitchSm+=((guiding?50:0)-pitchSm)*.05;
+      const want=(guiding&&heading!=null)?heading:0;
+      bearSm=(bearSm+((((want-bearSm)+540)%360)-180)*.04+360)%360;
+      map.jumpTo({center:[shown.lng,shown.lat],pitch:pitchSm,bearing:bearSm});
+    }
+  }
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+map.on('dragstart',()=>{follow=false;$('follow').classList.remove('on');});
+$('follow').onclick=()=>{follow=true;$('follow').classList.add('on');if(me)fly({center:[me.lng,me.lat],zoom:Math.max(map.getZoom(),16),duration:1000});};
+// ---- search ----
+const hideLists=()=>{$('results').classList.remove('show');$('saved').classList.remove('show');};
+function goTo(p){follow=false;$('follow').classList.remove('on');fly({center:[p.lng,p.lat],zoom:16,duration:1500});}
+$('q').addEventListener('keydown',async e=>{
+  if(e.key!=='Enter')return;const box=$('results');hideLists();box.classList.add('show');
+  if(!navigator.onLine){box.innerHTML='<div>Offline. Use Places for saved spots.</div>';return;}
+  box.innerHTML='<div>Searching...</div>';
+  try{const r=await fetch('https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&q='+encodeURIComponent($('q').value));const j=await r.json();
+  box.innerHTML='';j.forEach(x=>{const d=document.createElement('div');d.textContent=x.display_name;d.onclick=()=>{hideLists();$('q').blur();const p={lat:+x.lat,lng:+x.lon};goTo(p);pick(p,x.display_name);};box.appendChild(d);});
+  if(!j.length)box.innerHTML='<div>No results</div>';}catch(_){box.innerHTML='<div>Search failed</div>';}
+});
+// ---- saved places ----
+$('save').onclick=async()=>{const p=dest||me;if(!p)return;const n=prompt('Name this place:',(await placeName(p)).split(',')[0]);if(!n)return;const s=saved();s.push({name:n,lat:p.lat,lng:p.lng});localStorage.setItem('helfy_places',JSON.stringify(s));};
+$('list').onclick=()=>{const b=$('saved');if(b.classList.contains('show')){hideLists();return;}hideLists();b.innerHTML='';const s=saved();
+  if(!s.length)b.innerHTML='<div>No saved places yet</div>';
+  else{const h=document.createElement('div');h.style.cssText='font-size:12px;color:var(--dim)';h.textContent='Tap to open. Hold to delete.';b.appendChild(h);}
+  s.forEach((x,i)=>{const d=document.createElement('div');d.textContent=x.name;d.onclick=()=>{hideLists();goTo(x);pick(x,x.name);};d.oncontextmenu=e=>{e.preventDefault();if(confirm('Delete '+x.name+'?')){s.splice(i,1);localStorage.setItem('helfy_places',JSON.stringify(s));hideLists();}};b.appendChild(d);});
+  b.classList.add('show');};
+// ---- destination ----
+map.on('click',e=>{hideLists();if(guiding)return;pick({lat:e.lngLat.lat,lng:e.lngLat.lng},null);});
+async function pick(p,name){
+  if(guiding)return;
+  dest=p;if(destMarker)destMarker.remove();
+  const wrap=document.createElement('div');const t=document.createElement('b');t.textContent='Loading...';wrap.appendChild(t);
+  const b=document.createElement('button');b.textContent='Go here';b.style.cssText='display:block;margin-top:10px;height:38px;width:100%';b.onclick=()=>startGuide();wrap.appendChild(b);
+  destMarker=new maplibregl.Marker({element:mk('dest')}).setLngLat([p.lng,p.lat]).setPopup(new maplibregl.Popup({offset:20,closeButton:false}).setDOMContent(wrap)).addTo(map);
+  destMarker.togglePopup();
+  const n=name||await placeName(p);t.textContent=n.split(',').slice(0,2).join(',');
+}
+async function startGuide(){
+  if(!me||!dest)return;
+  if(destMarker&&destMarker.getPopup())destMarker.getPopup().remove();
+  minD=Infinity;route=[];drawRoute();arrived=false;guiding=true;
+  $('guide').classList.add('show');setCmd('...','');$('info').textContent='Finding route...';
+  if(navigator.onLine){
+    try{const r=await fetch(`https://router.project-osrm.org/route/v1/foot/${me.lng},${me.lat};${dest.lng},${dest.lat}?overview=full&geometries=geojson`);const j=await r.json();
+    if(j.routes&&j.routes[0]){route=j.routes[0].geometry.coordinates.map(c=>({lat:c[1],lng:c[0]}));drawRoute();}}catch(_){}
+  }
+  follow=true;$('follow').classList.add('on');guide();
+}
+function stopGuide(){
+  guiding=false;arrived=false;dest=null;route=[];drawRoute();
+  if(destMarker){destMarker.remove();destMarker=null;}
+  $('guide').classList.remove('show');
+  try{speechSynthesis.cancel();}catch(_){}
+}
+$('stop').onclick=stopGuide;
+// ---- guidance: left / right / forward / miss ----
+function setCmd(text,cls){const c=$('cmd');const changed=c.textContent!==text;c.textContent=text;c.className=cls;if(changed){void c.offsetWidth;c.classList.add('pop');}}
+function guide(){
+  if(!me||!dest)return;
+  const dDest=dist(me,dest);
+  if(dDest<20){
+    if(!arrived){arrived=true;say('ARRIVED','arrived','You arrived');$('info').textContent='You are here';setTimeout(()=>{if(arrived)stopGuide();},4000);}
+    return;
+  }
+  if(arrived)return;
+  if(dDest<minD)minD=dDest;
+  let tg=dest,remain=dDest;
+  if(route.length>1){
+    let bi=0,bd=Infinity;route.forEach((p,i)=>{const d=dist(me,p);if(d<bd){bd=d;bi=i;}});
+    let j=bi;while(j<route.length-1&&dist(me,route[j])<25)j++;tg=route[j];
+    remain=dist(me,route[bi]);for(let k=bi;k<route.length-1;k++)remain+=dist(route[k],route[k+1]);
+  }
+  $('info').textContent=`${fmtD(remain)} · ${fmtT(remain/Math.max(speedAvg,0.8))}${route.length?'':' · straight line'}`;
+  if(minD<60&&dDest>minD+40){say('MISS','miss','Miss. You passed the place');return;}
+  if(heading==null){setCmd('MOVE','');return;}
+  const diff=((bearing(me,tg)-heading+540)%360)-180;
+  if(Math.abs(diff)<25)say('FORWARD','forward','Forward');
+  else if(diff>0)say('RIGHT','right','Right');
+  else say('LEFT','left','Left');
+}
+function say(text,cls,speech){
+  setCmd(text,cls);
+  const now=Date.now();
+  if(speech!==lastSpoken||now-lastSpokeAt>15000){
+    if(speech===lastSpoken&&now-lastSpokeAt<4000)return;
+    lastSpoken=speech;lastSpokeAt=now;
+    try{speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(speech));}catch(_){}
+  }
+}
+// ---- offline map download (area you are looking at) ----
+$('dl').onclick=async()=>{
+  if(!navigator.onLine){alert('Go online to download maps.');return;}
+  try{
+    $('dl').textContent='...';
+    const st=await (await fetch(STYLES[isLight?'light':'dark'])).json();
+    const src=Object.values(st.sources).find(s=>s.type==='vector');
+    const tj=src.url?await (await fetch(src.url)).json():src;
+    const tpl=tj.tiles[0],maxz=Math.min(tj.maxzoom||14,14);
+    const b=map.getBounds(),c=map.getCenter();
+    const N=Math.max(b.getNorth(),c.lat+.03),S=Math.min(b.getSouth(),c.lat-.03),W=Math.min(b.getWest(),c.lng-.03),E=Math.max(b.getEast(),c.lng+.03);
+    let top=maxz,urls=[];
+    const build=zmax=>{const out=[];for(let z=8;z<=zmax;z++){const t=(lat,lng)=>({x:Math.floor((lng+180)/360*2**z),y:Math.floor((1-Math.log(Math.tan(rad(lat))+1/Math.cos(rad(lat)))/Math.PI)/2*2**z)});const a=t(N,W),d=t(S,E);for(let x=a.x;x<=d.x;x++)for(let y=a.y;y<=d.y;y++)out.push(tpl.replace('{z}',z).replace('{x}',x).replace('{y}',y));}return out;};
+    urls=build(top);while(urls.length>400&&top>9){top--;urls=build(top);}
+    const cache=await caches.open('helfy-runtime-v1');let n=0;
+    for(const u of urls){try{if(!(await cache.match(u)))await cache.add(u);}catch(_){}n++;$('dl').textContent=n+'/'+urls.length;}
+    alert('Saved for offline use.');
+  }catch(e){alert('Could not save the map.');}
+  $('dl').textContent='Offline';
+};
+</script></body></html>
